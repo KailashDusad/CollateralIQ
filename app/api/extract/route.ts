@@ -2,6 +2,7 @@ import { PDFParse } from 'pdf-parse'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 const maxFileSize = 50 * 1024 * 1024
@@ -215,12 +216,19 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) return Response.json({ error: 'Upload a document.' }, { status: 400 })
     if (file.size > maxFileSize) return Response.json({ error: 'Document must be 50 MB or smaller.' }, { status: 413 })
     const dataBuffer = Buffer.from(await file.arrayBuffer())
-    const geminiResult = await extractWithGemini(file, dataBuffer)
+    let geminiResult: Awaited<ReturnType<typeof extractWithGemini>>
+    let geminiError = ''
+    try {
+      geminiResult = await extractWithGemini(file, dataBuffer)
+    } catch (error) {
+      geminiError = error instanceof Error ? error.message : 'Gemini extraction failed.'
+      geminiResult = undefined
+    }
     const parsed = geminiResult ? undefined : file.type === 'application/pdf' ? await parsePdf(dataBuffer) : undefined
     const fields = geminiResult?.fields || (parsed ? extractFields(parsed.text) : {})
     const required = ['borrower_name', 'age', 'credit_score', 'loan_amount_inr', 'annual_income_lakh', 'tenure_years', 'carpet_area_sqft', 'property_age_years', 'indicative_value_inr']
-    if (!geminiResult && !parsed) return Response.json({ error: 'Set GEMINI_API_KEY to extract this document type. PDF fallback is available without Gemini.' }, { status: 503 })
-    return Response.json({ fields, missingFields: required.filter(field => fields[field] === undefined), source: file.name, extractionSource: geminiResult?.source || 'local-pdf-fallback', model: geminiResult?.model })
+    if (!geminiResult && !parsed) return Response.json({ error: geminiError || 'Set GEMINI_API_KEY in Vercel Project Settings > Environment Variables to extract this document type. PDF fallback is available without Gemini.' }, { status: 503 })
+    return Response.json({ fields, missingFields: required.filter(field => fields[field] === undefined), source: file.name, extractionSource: geminiResult?.source || 'local-pdf-fallback', model: geminiResult?.model, warning: geminiError || undefined })
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : 'Unable to read document.' }, { status: 422 })
   }
