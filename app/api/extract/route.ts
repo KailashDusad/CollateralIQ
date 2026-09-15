@@ -1,6 +1,4 @@
-import { createRequire } from 'node:module'
-import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { PDFParse } from 'pdf-parse'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -8,20 +6,7 @@ export const dynamic = 'force-dynamic'
 const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 const maxFileSize = 50 * 1024 * 1024
 
-const require = createRequire(path.join(process.cwd(), 'package.json'))
-let workerSource: string | undefined
-
-function getWorkerSource() {
-  workerSource ??= pathToFileURL(createRequire(require.resolve('pdf-parse')).resolve('pdfjs-dist/legacy/build/pdf.worker.min.mjs')).href
-  return workerSource
-}
-
 async function parsePdf(data: Buffer) {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
-  const { PDFParse } = await import('pdf-parse')
-  const worker = getWorkerSource()
-  pdfjs.GlobalWorkerOptions.workerSrc = worker
-  PDFParse.setWorker(worker)
   const parser = new PDFParse({ data })
   try {
     return await parser.getText()
