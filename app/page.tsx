@@ -70,7 +70,7 @@ function CaseDetail({ row, back }: { row: Row; back: () => void }) { const [tab,
 
 export default function Page() {
   const [active, setActive] = useState('Dashboard'); const [rows, setRows] = useState<Row[]>([]); const [selected, setSelected] = useState<Row | null>(null); const [query, setQuery] = useState(''); const [error, setError] = useState(''); const [menu, setMenu] = useState(false)
-  useEffect(() => { fetch('/api/cases').then(async response => { const text = await response.text(); let body: { error?: string; cases?: Row[] }; try { body = JSON.parse(text) } catch { throw new Error(`Cases API returned ${response.status} instead of JSON. Check the Vercel function logs and deployment root.`) } if (!response.ok) throw new Error(body.error || `Cases API returned ${response.status}.`); setRows(body.cases || []) }).catch(value => setError(value instanceof Error ? value.message : 'Unable to load cases.')) }, [])
+  useEffect(() => { fetch('/cases.json').then(async response => { if (!response.ok) throw new Error(`Static case data returned ${response.status}.`); const body = await response.json() as { cases?: Row[] }; setRows(body.cases || []) }).catch(value => setError(value instanceof Error ? value.message : 'Unable to load cases.')) }, [])
   const visible = useMemo(() => {
     const search = query.trim().toLowerCase()
     return rows.filter(row => !search || [row.case_id, row.borrower_name, row.locality, row.city, row.loan_product, row.property_type, row.occupation, row.collateral_assessment].some(value => str(value).toLowerCase().includes(search)))

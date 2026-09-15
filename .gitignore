@@ -12,6 +12,7 @@
 node_modules
 .next/
 .collateraliq-model.json
+public/cases.json
 .DS_Store
 
 AGENTS.md
