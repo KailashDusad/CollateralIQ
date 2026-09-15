@@ -1,0 +1,23 @@
+# Local tooling files
+.snowflake/
+.vercel/
+
+# Environment variables
+.env*.local
+.env
+.env.*
+!.env.example
+
+# Common ignores
+node_modules
+.next/
+.collateraliq-model.json
+.DS_Store
+
+AGENTS.md
+CLAUDE.md
+
+CollateralIQ_Government_Aligned_3000.csv
+
+CollateralIQ_Project_Report.pdf
+CollateralIQ_Synthetic_Dadar_Sale_Deed_Demo.pdf
