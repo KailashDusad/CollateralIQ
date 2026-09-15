@@ -3,17 +3,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
-const maxFileSize = 50 * 1024 * 1024
-
-async function parsePdf(data: Buffer) {
-  const { PDFParse } = await import('pdf-parse')
-  const parser = new PDFParse({ data })
-  try {
-    return await parser.getText()
-  } finally {
-    await parser.destroy()
-  }
-}
+const maxFileSize = 20 * 1024 * 1024
 
 function cleanText(value: string) {
   return value.replace(/[■●▪]/g, '').replace(/\s+/g, ' ').trim()
@@ -150,42 +140,9 @@ async function geminiRequest(url: string, init: RequestInit) {
   return body ? JSON.parse(body) as Record<string, any> : {}
 }
 
-async function startGeminiUpload(url: string, init: RequestInit) {
-  const response = await fetch(url, init)
-  const body = await response.text()
-  if (!response.ok) throw new Error(`Gemini upload ${response.status}: ${body.slice(0, 500)}`)
-  const uploadUrl = response.headers.get('x-goog-upload-url')
-  if (!uploadUrl) throw new Error('Gemini did not return a resumable upload URL.')
-  return uploadUrl
-}
-
 async function extractWithGemini(file: File, data: Buffer) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return undefined
-
-  const uploadUrl = await startGeminiUpload(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Upload-Protocol': 'resumable',
-      'X-Goog-Upload-Command': 'start',
-      'X-Goog-Upload-Header-Content-Length': String(data.byteLength),
-      'X-Goog-Upload-Header-Content-Type': file.type || 'application/octet-stream',
-    },
-    body: JSON.stringify({ file: { display_name: file.name } }),
-  })
-  const uploaded = await geminiRequest(uploadUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Length': String(data.byteLength),
-      'X-Goog-Upload-Offset': '0',
-      'X-Goog-Upload-Command': 'upload, finalize',
-    },
-    body: data,
-  })
-  const fileUri = uploaded.file?.uri || uploaded.uri
-  const mimeType = uploaded.file?.mimeType || uploaded.mimeType || file.type || 'application/octet-stream'
-  if (!fileUri) throw new Error('Gemini did not return a file URI.')
 
   const generated = await geminiRequest(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     method: 'POST',
@@ -194,7 +151,7 @@ async function extractWithGemini(file: File, data: Buffer) {
       contents: [{
         role: 'user',
         parts: [
-          { file_data: { mime_type: mimeType, file_uri: fileUri } },
+          { inline_data: { mime_type: file.type || 'application/pdf', data: data.toString('base64') } },
           { text: extractionPrompt },
         ],
       }],
@@ -223,11 +180,10 @@ export async function POST(request: Request) {
       geminiError = error instanceof Error ? error.message : 'Gemini extraction failed.'
       geminiResult = undefined
     }
-    const parsed = geminiResult ? undefined : file.type === 'application/pdf' ? await parsePdf(dataBuffer) : undefined
-    const fields = geminiResult?.fields || (parsed ? extractFields(parsed.text) : {})
+    const fields = geminiResult?.fields || {}
     const required = ['borrower_name', 'age', 'credit_score', 'loan_amount_inr', 'annual_income_lakh', 'tenure_years', 'carpet_area_sqft', 'property_age_years', 'indicative_value_inr']
-    if (!geminiResult && !parsed) return Response.json({ error: geminiError || 'Set GEMINI_API_KEY in Vercel Project Settings > Environment Variables to extract this document type. PDF fallback is available without Gemini.' }, { status: 503 })
-    return Response.json({ fields, missingFields: required.filter(field => fields[field] === undefined), source: file.name, extractionSource: geminiResult?.source || 'local-pdf-fallback', model: geminiResult?.model, warning: geminiError || undefined })
+    if (!geminiResult) return Response.json({ error: geminiError || 'Set GEMINI_API_KEY in Vercel Project Settings > Environment Variables before uploading documents.' }, { status: 503 })
+    return Response.json({ fields, missingFields: required.filter(field => fields[field] === undefined), source: file.name, extractionSource: geminiResult.source, model: geminiResult.model, warning: geminiError || undefined })
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : 'Unable to read document.' }, { status: 422 })
   }
