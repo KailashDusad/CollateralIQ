@@ -1,5 +1,3 @@
-import { PDFParse } from 'pdf-parse'
-
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -8,6 +6,7 @@ const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 const maxFileSize = 50 * 1024 * 1024
 
 async function parsePdf(data: Buffer) {
+  const { PDFParse } = await import('pdf-parse')
   const parser = new PDFParse({ data })
   try {
     return await parser.getText()
