@@ -144,25 +144,34 @@ async function extractWithGemini(file: File, data: Buffer) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return undefined
 
-  const generated = await geminiRequest(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        role: 'user',
-        parts: [
-          { inline_data: { mime_type: file.type || 'application/pdf', data: data.toString('base64') } },
-          { text: extractionPrompt },
-        ],
-      }],
-      generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-    }),
-  })
-  const responseText = generated.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || '').join('')
-  if (!responseText) throw new Error('Gemini returned no extraction result.')
-  const parsed = JSON.parse(responseText.replace(/^```json\s*|\s*```$/g, '').trim()) as Record<string, unknown>
-  const fields = Object.fromEntries(Object.entries(parsed).filter(([, value]) => value !== null && value !== undefined && value !== ''))
-  return { fields, model: geminiModel, source: 'gemini' }
+  const models = [...new Set([geminiModel, 'gemini-2.5-flash'])]
+  let lastError: unknown
+  for (const model of models) {
+    try {
+      const generated = await geminiRequest(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            role: 'user',
+            parts: [
+              { inline_data: { mime_type: file.type || 'application/pdf', data: data.toString('base64') } },
+              { text: extractionPrompt },
+            ],
+          }],
+          generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+        }),
+      })
+      const responseText = generated.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || '').join('')
+      if (!responseText) throw new Error(`Gemini model ${model} returned no extraction result.`)
+      const parsed = JSON.parse(responseText.replace(/^```json\s*|\s*```$/g, '').trim()) as Record<string, unknown>
+      const fields = Object.fromEntries(Object.entries(parsed).filter(([, value]) => value !== null && value !== undefined && value !== ''))
+      return { fields, model, source: 'gemini' }
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Gemini extraction failed.')
 }
 
 export async function POST(request: Request) {
