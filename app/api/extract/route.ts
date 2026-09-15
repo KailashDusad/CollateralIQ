@@ -169,7 +169,7 @@ export async function POST(request: Request) {
   try {
     const data = await request.formData()
     const file = data.get('document')
-    if (!(file instanceof File)) return Response.json({ error: 'Upload a document.' }, { status: 400 })
+    if (!file || typeof file !== 'object' || typeof file.arrayBuffer !== 'function') return Response.json({ error: 'Upload a document.' }, { status: 400 })
     if (file.size > maxFileSize) return Response.json({ error: 'Document must be 50 MB or smaller.' }, { status: 413 })
     const dataBuffer = Buffer.from(await file.arrayBuffer())
     let geminiResult: Awaited<ReturnType<typeof extractWithGemini>>
